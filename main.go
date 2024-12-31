@@ -36,7 +36,7 @@ func main() {
 		// 获取每个链的最新高度和对应的最大非0高度
 		maxEpochs, err := getMaxEpochs(db)
 		if err != nil {
-			log.Println("Error getting share counts:", err)
+			log.Println("Error getting max epochs:", err)
 			time.Sleep(time.Minute * time.Duration(*interval))
 			continue
 		}
@@ -85,7 +85,7 @@ func pushMaxEpoch(pushAddr, chain string, maxEpoch int64) error {
 		return err
 	}
 
-	log.Printf("Pushed %s_shares_count{job=\"%s\"} = %d", chain, chain, maxEpoch)
+	log.Printf("Pushed %s_max_epoch_nonzero{job=\"%s\"} = %d", chain, chain, maxEpoch)
 	return nil
 }
 
