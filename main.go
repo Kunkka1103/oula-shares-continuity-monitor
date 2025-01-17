@@ -82,7 +82,7 @@ func writeToPromFile(filePath, chain string, epochCount int64) error {
 
 	_, err = fmt.Fprintf(
 		file,
-		"%s_shares_count{instance=\"jumperserver\",job=\"%s\"} %d\n",
+		"%s_max_epoch_nozero{instance=\"jumperserver\",job=\"%s\"} %d\n",
 		chain, chain, epochCount,
 	)
 	if err != nil {
