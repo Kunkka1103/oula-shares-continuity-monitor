@@ -5,23 +5,22 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"os"
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/push"
 )
 
 var (
-	opsDSN   = flag.String("opsDsn", "", "MySQL DSN, e.g. user:password@tcp(host:3306)/ops_db")
-	pushAddr = flag.String("push-url", "http://localhost:9091", "Prometheus Pushgateway URL")
-	interval = flag.Int("interval", 5, "Check interval in minutes")
+	opsDSN    = flag.String("opsDsn", "", "MySQL DSN, e.g. user:password@tcp(host:3306)/ops_db")
+	outputDir = flag.String("output-dir", "/opt/node-exporter/prom", "Directory to write Prometheus metric files")
+	interval  = flag.Int("interval", 5, "Check interval in minutes")
 )
 
 func main() {
 	flag.Parse()
-	if *opsDSN == "" || *pushAddr == "" {
-		log.Panicln("Both opsDsn and push-url parameters are required.")
+	if *opsDSN == "" {
+		log.Panicln("opsDsn is required.")
 	}
 
 	// 初始化 MySQL 连接
@@ -43,10 +42,15 @@ func main() {
 
 		// 推送每个链的最大非0高度
 		for chain, epoch := range maxEpochs {
-			// 推送指标，直接使用链名作为 job 标签
-			err = pushMaxEpoch(*pushAddr, chain, epoch)
-			if err != nil {
-				log.Printf("Error pushing max epoch for %s: %v", chain, err)
+			// 构建文件路径
+			filePath := fmt.Sprintf("%s/%s_max_epoch_nozero.prom", *outputDir, chain)
+			log.Printf("正在写入指标数据到 %s", filePath)
+
+			// 使用封装好的函数写文件
+			if err := writeToPromFile(filePath, chain, epoch); err != nil {
+				log.Printf("写入文件 %s 时出错: %v", filePath, err)
+			} else {
+				log.Printf("成功写入到 %s", filePath)
 			}
 		}
 
@@ -68,26 +72,23 @@ func initDB(DSN string) (*sql.DB, error) {
 	return db, nil
 }
 
-// 推送当前链的最新分享计数到 Prometheus Pushgateway
-func pushMaxEpoch(pushAddr, chain string, maxEpoch int64) error {
-	// 创建指标
-	gauge := prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: fmt.Sprintf("%s_max_epoch_nonzero", chain), // 使用链名作为指标名
-		Help: fmt.Sprintf("max epoch nozero for chain %s", chain),
-	})
-
-	// 设置指标值
-	gauge.Set(float64(maxEpoch))
-
-	// 推送指标
-	err := push.New(pushAddr, chain).
-		Grouping("instance", "localhost").
-		Collector(gauge).Push()
+// 封装好的函数，用于写入 Prometheus 格式的数据到文件
+func writeToPromFile(filePath, chain string, epochCount int64) error {
+	file, err := os.OpenFile(filePath, os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		return err
+		return fmt.Errorf("无法打开文件 %s: %v", filePath, err)
+	}
+	defer file.Close()
+
+	_, err = fmt.Fprintf(
+		file,
+		"%s_shares_count{instance=\"jumperserver\",job=\"%s\"} %d\n",
+		chain, chain, epochCount,
+	)
+	if err != nil {
+		return fmt.Errorf("写入文件 %s 时发生错误: %v", filePath, err)
 	}
 
-	log.Printf("Pushed %s_max_epoch_nonzero{job=\"%s\"} = %d", chain, chain, maxEpoch)
 	return nil
 }
 
